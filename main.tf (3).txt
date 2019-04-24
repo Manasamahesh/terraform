@@ -1,29 +1,168 @@
 # define the  primary ec2 instance
 resource "aws_instance" "primary-instance" {
   ami             = "${data.aws_ami.ubuntu.id}"
-  instance_type   = "t2.micro"
-  subnet_id="${aws_subnet.public-subnet.id}"
+  instance_type   = "t2.large"
+  subnet_id="${aws_subnet.public1-subnet.id}"
   vpc_security_group_ids=["${aws_security_group.sgefs.id}"]
   associate_public_ip_address=true
+   key_name= "mana"
   source_dest_check=false
-
-
-  tags {
+  user_data= "${file("data.sh")}"
+tags {
     Name = "primary-instance"
   }
 }
 # define the secondary ec2 instance
-resource "aws_instance" "secondary-instance" { 
+resource "aws_instance" "secondary-instance" {
   ami             = "${data.aws_ami.ubuntu.id}"
-  instance_type   = "t2.micro"
-  subnet_id="${aws_subnet.public-subnet.id}"
+  instance_type   = "t2.large"
+  subnet_id="${aws_subnet.public2-subnet.id}"
   vpc_security_group_ids=["${aws_security_group.sgefs.id}"]
   associate_public_ip_address=true
+  key_name="mana"
   source_dest_check=false
 
 
   tags {
-  
+      Name="secondary-instance"
   }
 }
-# define the rds
+
+resource "aws_efs_file_system" "efs"{
+performance_mode="generalPurpose"
+throughput_mode="bursting"
+tags{
+Name="efs for corda"
+}
+}
+resource "aws_efs_mount_target" "efs_target"{
+file_system_id="${aws_efs_file_system.efs.id}"
+subnet_id="${aws_subnet.private2-subnet.id}"
+security_groups=["${aws_security_group.sgefs.id}"]
+}
+
+#security_group for ec2 instances
+resource "aws_security_group" "ec2"{
+name="example-instance"
+description="allow traffic out to Nfs for ec2 mount"
+vpc_id="${aws_vpc.default.id}"
+tags{
+name="security for efs and ec2 access"
+}
+}
+resource "random_id" "creation_token" {
+  byte_length   = 8
+  prefix        = "example-instance-"
+}
+
+#resource "aws_efs_file_system" "efs" {
+ # creation_token = "${random_id.creation_token.hex}"
+
+  #tags {
+   # Name = "example-instance-"
+    #CreationToken = "${random_id.creation_token.hex}"
+    #terraform = "true"
+  #}
+ #}
+resource "aws_security_group_rule" "nfs-out" {
+  type                     = "egress"
+  from_port                = 2049
+  to_port                  = 2049
+  protocol                 = "tcp"
+  security_group_id = "${aws_security_group.ec2.id}"
+  source_security_group_id = "${aws_security_group.mnt.id}"
+}
+
+resource "aws_security_group" "mnt" {
+  name        = "example-instance-mnt"
+  description = "Allow traffic from instances using ec2"
+  vpc_id      = "${aws_vpc.default.id}"
+
+  tags {
+    Name = "allow_nfs_in_from_example-instance-ec2"
+    terraform = "true"
+  }
+}
+
+resource "aws_security_group_rule" "nfs-in" {
+  type                     = "ingress"
+  from_port                = 2049
+  to_port                  = 2049
+  protocol                 = "tcp"
+  security_group_id = "${aws_security_group.mnt.id}"
+  source_security_group_id = "${aws_security_group.ec2.id}"
+}
+#output "ec2_security_group_id" {
+
+ # value = "${aws_security_group.ec2.id}"
+#}
+
+# define the secondary ec2 instance
+#resource "aws_instance" "example-instance" {
+ # ami             = "${data.aws_ami.ubuntu.id}"
+  #instance_type   = "t2.micro"
+  #subnet_id="${aws_subnet.public2-subnet.id}"
+ # vpc_security_group_ids=["$${ec2_security_group_id}"]
+
+
+  #associate_public_ip_address=true
+  #source_dest_check=false
+ # provisioner "remote-exec"{
+ #  connection{
+  #   type="ssh"
+   #  user="ubuntu"
+   #  private_key="${file("~/.ssh/my-key")}"
+#}
+#inline=[
+ #  "sudo mkdir -p /mnt/efs",
+ #"sudo mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport file-system-id.efs.aws-region.amazonaws.com:/ /mnt/efs",
+# "sudo su -c \"echo file-system-id.efs.aws-region.amazonaws.com:/ /mnt/efs nfs4 defaults,vers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 0 0' >> /etc/fstab\"" #create fstab entry to ensure automount on reboots
+#]
+#}
+
+
+ # tags {
+  #    Name="secondary-instance"
+ # }
+#}
+
+# resources of RDS
+
+resource "aws_db_instance" "myrds"{
+allocated_storage=10
+storage_type="gp2"
+engine="postgres"
+engine_version="10.4"
+instance_class="db.t2.micro"
+name="mytestdb"
+username="manasa"
+password="newjersey21"
+#parameter_group_name="default.postgreSql"
+#availability_zone="us-east-2a"
+backup_retention_period=1
+#storage_encrypted="true"
+backup_window="09:46-10:16"
+#deletion_protection="true"
+enabled_cloudwatch_logs_exports=["postgresql"]
+monitoring_role_arn="arn:aws:iam::743772964924:role/monitor21@"
+monitoring_interval="5"
+
+name="testdb"
+password="test12621"
+port="5467"
+publicly_accessible="false"
+apply_immediately="true"
+skip_final_snapshot="true"
+}
+
+#s3 for backup
+
+#resource "aws_db_instance" "db"{
+#s3_import{
+#source_engine="postgresqli"
+#source_engine_version="5.7"
+#bucket_name="rdsbackup"
+#ingestion_role="arn:aws:iam::743772964924:user/manasa"
+#bucket_prefix="backups"
+#}
+#}
