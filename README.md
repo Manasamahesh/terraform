@@ -1,2 +1,2 @@
 # terraform
-infrasturcturecodeforblockchain
+infrasturcture code for blockchain
